@@ -60,7 +60,7 @@ namespace ServiceStack.Text.Common
                 if (type.IsOrHasGenericInterfaceTypeOf(typeof(IList<>)))
                     return DeserializeList<T, TSerializer>.Parse;
 
-                if (type.IsOrHasGenericInterfaceTypeOf(typeof(IDictionary<,>)))
+                if (type.IsOrHasGenericInterfaceTypeOf(typeof(IDictionary<,>)) && !JsConfig.DictionaryAsKeyValuePairs)
                     return DeserializeDictionary<TSerializer>.GetParseMethod(type);
 
                 if (type.IsOrHasGenericInterfaceTypeOf(typeof(ICollection<>)))
