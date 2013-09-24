@@ -11,6 +11,7 @@
     <RootNamespace>ServiceStack.Text</RootNamespace>
     <AssemblyName>ServiceStack.Text</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <FileUpgradeFlags>
     </FileUpgradeFlags>
@@ -72,6 +73,7 @@
     <AssemblyOriginatorKeyFile>..\..\..\WujiGridKey.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
     <Reference Include="System" />
     <Reference Include="System.Core">
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
@@ -287,7 +289,7 @@
     <Compile Include="TypeSerializer.Generic.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="WebRequestExtensions.cs" />
+    <Compile Include="HttpUtilExtensions.cs" />
     <Compile Include="XmlSerializer.cs">
       <SubType>Code</SubType>
     </Compile>
