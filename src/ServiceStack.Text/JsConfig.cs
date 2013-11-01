@@ -558,28 +558,6 @@ namespace ServiceStack.Text
             }
         }
 
-        /// <summary>
-        /// Gets or sets a value indicating if the framework should serialize Dictionary as array
-        /// of KayValuePair objects (when <see langword="true"/>) or if it is serialized so that the value
-        /// of the key in dictionary is used as name of property in javascript object (when <see langword="false"/>)
-        /// The default is <see langword="false"/>.
-        /// </summary>
-        private static bool? sDictionaryAsKeyValuePairs;
-        public static bool DictionaryAsKeyValuePairs
-        {
-            // obeying the use of ThreadStatic, but allowing for setting JsConfig once as is the normal case
-            get
-            {
-                return (JsConfigScope.Current != null ? JsConfigScope.Current.DictionaryAsKeyValuePairs : null)
-                    ?? sDictionaryAsKeyValuePairs
-                    ?? false;
-            }
-            set
-            {
-                if (!sDictionaryAsKeyValuePairs.HasValue) sDictionaryAsKeyValuePairs = value;
-            }
-        }
-
 	    public static void Reset()
         {
             foreach (var rawSerializeType in HasSerializeFn.ToArray())
@@ -614,7 +592,6 @@ namespace ServiceStack.Text
             TreatValueAsRefTypes = new HashSet<Type> { typeof(KeyValuePair<,>) };
             PropertyConvention = JsonPropertyConvention.ExactMatch;
             sExcludePropertyReferences = null;
-	        sDictionaryAsKeyValuePairs = null;
         }
 
         public static void Reset(Type cachesForType)

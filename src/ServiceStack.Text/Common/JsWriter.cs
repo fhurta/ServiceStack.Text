@@ -390,7 +390,7 @@ namespace ServiceStack.Text.Common
                     return WriteLists<T, TSerializer>.Write;
 
                 var mapInterface = typeof(T).GetTypeWithGenericTypeDefinitionOf(typeof(IDictionary<,>));
-                if (mapInterface != null && !JsConfig.DictionaryAsKeyValuePairs)
+                if (mapInterface != null)
                 {
                     var mapTypeArgs = mapInterface.GenericTypeArguments();
                     var writeFn = WriteDictionary<TSerializer>.GetWriteGenericDictionary(
@@ -415,7 +415,7 @@ namespace ServiceStack.Text.Common
 
             var isDictionary = typeof(T) != typeof(IEnumerable) && typeof(T) != typeof(ICollection)
                 && (typeof(T).AssignableFrom(typeof(IDictionary)) || typeof(T).HasInterface(typeof(IDictionary)));
-            if (isDictionary && !JsConfig.DictionaryAsKeyValuePairs)
+            if (isDictionary)
             {
                 return WriteDictionary<TSerializer>.WriteIDictionary;
             }

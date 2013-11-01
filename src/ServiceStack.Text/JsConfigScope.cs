@@ -81,6 +81,5 @@ namespace ServiceStack.Text
         public int? MaxDepth { get; set; }
         public EmptyCtorFactoryDelegate ModelFactory { get; set; }
         public string[] ExcludePropertyReferences { get; set; }
-        public bool? DictionaryAsKeyValuePairs { get; set; }
     }
 }
