@@ -5,9 +5,9 @@
 // Authors:
 //   Demis Bellot (demis.bellot@gmail.com)
 //
-// Copyright 2012 ServiceStack Ltd.
+// Copyright 2012 Service Stack LLC. All Rights Reserved.
 //
-// Licensed under the same terms of ServiceStack: new BSD license.
+// Licensed under the same terms of ServiceStack.
 //
 
 using System;
@@ -101,6 +101,15 @@ namespace ServiceStack.Text.Common
             return WriteProperties;
         }
 
+#if !NETFX_CORE
+        static Func<T, bool> GetShouldSerializeMethod(MemberInfo member)
+        {
+            var method = member.DeclaringType.GetMethod("ShouldSerialize" + member.Name, BindingFlags.Instance | BindingFlags.Public,
+                null, Type.EmptyTypes, null);
+            return (method == null || method.ReturnType != typeof(bool)) ? null : (Func<T,bool>)Delegate.CreateDelegate(typeof(Func<T,bool>), method);
+        }
+#endif
+
         private static bool Init()
         {
             if (!typeof(T).IsClass() && !typeof(T).IsInterface() && !JsConfig.TreatAsRefType(typeof(T))) return false;
@@ -124,13 +133,17 @@ namespace ServiceStack.Text.Common
             {
                 var propertyInfo = propertyInfos[i];
 
-                string propertyName, propertyNameCLSFriendly, propertyNameLowercaseUnderscore, propertyReflectedName;
+                string propertyName, propertyNameCLSFriendly, propertyNameLowercaseUnderscore, propertyDeclaredTypeName;
                 int propertyOrder = -1;
                 var propertyType = propertyInfo.PropertyType;
                 var defaultValue = propertyType.GetDefaultValue();
                 bool propertySuppressDefaultConfig = defaultValue != null && propertyType.IsValueType() && JsConfig.HasSerializeFn.Contains(propertyType);
                 bool propertySuppressDefaultAttribute = false;
-
+#if NETFX_CORE
+                var shouldSerialize = (Func<T, bool>)null;
+#else
+                var shouldSerialize = GetShouldSerializeMethod(propertyInfo);
+#endif
                 if (isDataContract)
                 {
                     var dcsDataMember = propertyInfo.GetDataMember();
@@ -139,7 +152,7 @@ namespace ServiceStack.Text.Common
                     propertyName = dcsDataMember.Name ?? propertyInfo.Name;
                     propertyNameCLSFriendly = dcsDataMember.Name ?? propertyName.ToCamelCase();
                     propertyNameLowercaseUnderscore = dcsDataMember.Name ?? propertyName.ToLowercaseUnderscore();
-                    propertyReflectedName = dcsDataMember.Name ?? propertyInfo.ReflectedType.Name;
+                    propertyDeclaredTypeName = propertyType.DeclaringType.Name;
                     propertyOrder = dcsDataMember.Order;
                     propertySuppressDefaultAttribute = !dcsDataMember.EmitDefaultValue;
                 }
@@ -148,14 +161,14 @@ namespace ServiceStack.Text.Common
                     propertyName = propertyInfo.Name;
                     propertyNameCLSFriendly = propertyName.ToCamelCase();
                     propertyNameLowercaseUnderscore = propertyName.ToLowercaseUnderscore();
-                    propertyReflectedName = propertyInfo.ReflectedType.Name;
+                    propertyDeclaredTypeName = propertyInfo.DeclaringType.Name;
                 }
 
 
                 PropertyWriters[i] = new TypePropertyWriter
                 (
                     propertyName,
-                    propertyReflectedName,
+                    propertyDeclaredTypeName,
                     propertyNameCLSFriendly,
                     propertyNameLowercaseUnderscore,
                     propertyOrder,
@@ -163,7 +176,8 @@ namespace ServiceStack.Text.Common
                     propertySuppressDefaultAttribute,
                     propertyInfo.GetValueGetter<T>(),
                     Serializer.GetWriteFn(propertyType),
-                    propertyType.GetDefaultValue()
+                    propertyType.GetDefaultValue(),
+                    shouldSerialize
                 );
             }
 
@@ -171,13 +185,17 @@ namespace ServiceStack.Text.Common
             {
                 var fieldInfo = fieldInfos[i];
 
-                string propertyName, propertyNameCLSFriendly, propertyNameLowercaseUnderscore, propertyReflectedName;
+                string propertyName, propertyNameCLSFriendly, propertyNameLowercaseUnderscore, propertyDeclaredTypeName;
                 int propertyOrder = -1;
                 var propertyType = fieldInfo.FieldType;
                 var defaultValue = propertyType.GetDefaultValue();
                 bool propertySuppressDefaultConfig = defaultValue != null && propertyType.IsValueType() && JsConfig.HasSerializeFn.Contains(propertyType);
                 bool propertySuppressDefaultAttribute = false;
-
+#if NETFX_CORE
+                var shouldSerialize = (Func<T, bool>)null;
+#else
+                var shouldSerialize = GetShouldSerializeMethod(fieldInfo);
+#endif
                 if (isDataContract)
                 {
                     var dcsDataMember = fieldInfo.GetDataMember();
@@ -186,7 +204,7 @@ namespace ServiceStack.Text.Common
                     propertyName = dcsDataMember.Name ?? fieldInfo.Name;
                     propertyNameCLSFriendly = dcsDataMember.Name ?? propertyName.ToCamelCase();
                     propertyNameLowercaseUnderscore = dcsDataMember.Name ?? propertyName.ToLowercaseUnderscore();
-                    propertyReflectedName = dcsDataMember.Name ?? fieldInfo.ReflectedType.Name;
+                    propertyDeclaredTypeName = fieldInfo.DeclaringType.Name;
                     propertyOrder = dcsDataMember.Order;
                     propertySuppressDefaultAttribute = !dcsDataMember.EmitDefaultValue;
                 }
@@ -195,13 +213,13 @@ namespace ServiceStack.Text.Common
                     propertyName = fieldInfo.Name;
                     propertyNameCLSFriendly = propertyName.ToCamelCase();
                     propertyNameLowercaseUnderscore = propertyName.ToLowercaseUnderscore();
-                    propertyReflectedName = fieldInfo.ReflectedType.Name;
+                    propertyDeclaredTypeName = fieldInfo.DeclaringType.Name;
                 }
 
                 PropertyWriters[i + propertyNamesLength] = new TypePropertyWriter
                 (
                     propertyName,
-                    propertyReflectedName,
+                    propertyDeclaredTypeName,
                     propertyNameCLSFriendly,
                     propertyNameLowercaseUnderscore,
                     propertyOrder,
@@ -209,7 +227,8 @@ namespace ServiceStack.Text.Common
                     propertySuppressDefaultAttribute,
                     fieldInfo.GetValueGetter<T>(),
                     Serializer.GetWriteFn(propertyType),
-                    defaultValue
+                    defaultValue,
+                    shouldSerialize
                 );
             }
             PropertyWriters = PropertyWriters.OrderBy(x => x.propertyOrder).ToArray();
@@ -233,28 +252,29 @@ namespace ServiceStack.Text.Common
             internal readonly int propertyOrder;
             internal readonly bool propertySuppressDefaultConfig;
             internal readonly bool propertySuppressDefaultAttribute;
-            internal readonly string propertyReflectedName;
-            internal readonly string propertyCombinedNameUpper;
+            internal readonly string propertyReferenceName;
             internal readonly string propertyNameCLSFriendly;
             internal readonly string propertyNameLowercaseUnderscore;
             internal readonly Func<T, object> GetterFn;
             internal readonly WriteObjectDelegate WriteFn;
             internal readonly object DefaultValue;
+            internal readonly Func<T, bool> shouldSerialize;
 
-            public TypePropertyWriter(string propertyName, string propertyReflectedName, string propertyNameCLSFriendly, string propertyNameLowercaseUnderscore, int propertyOrder, bool propertySuppressDefaultConfig,bool propertySuppressDefaultAttribute,
-                Func<T, object> getterFn, WriteObjectDelegate writeFn, object defaultValue)
+            public TypePropertyWriter(string propertyName, string propertyDeclaredTypeName, string propertyNameCLSFriendly, 
+                string propertyNameLowercaseUnderscore, int propertyOrder, bool propertySuppressDefaultConfig,bool propertySuppressDefaultAttribute,
+                Func<T, object> getterFn, WriteObjectDelegate writeFn, object defaultValue, Func<T, bool> shouldSerialize)
             {
                 this.propertyName = propertyName;
                 this.propertyOrder = propertyOrder;
                 this.propertySuppressDefaultConfig = propertySuppressDefaultConfig;
                 this.propertySuppressDefaultAttribute = propertySuppressDefaultAttribute;
-                this.propertyReflectedName = propertyReflectedName;
-                this.propertyCombinedNameUpper = propertyReflectedName.ToUpper() + "." + propertyName.ToUpper();
+                this.propertyReferenceName = propertyDeclaredTypeName + "." + propertyName;
                 this.propertyNameCLSFriendly = propertyNameCLSFriendly;
                 this.propertyNameLowercaseUnderscore = propertyNameLowercaseUnderscore;
                 this.GetterFn = getterFn;
                 this.WriteFn = writeFn;
                 this.DefaultValue = defaultValue;
+                this.shouldSerialize = shouldSerialize;
             }
         }
 
@@ -316,15 +336,16 @@ namespace ServiceStack.Text.Common
             if (PropertyWriters != null)
             {
                 var len = PropertyWriters.Length;
-                var exclude = JsConfig.ExcludePropertyReferences ?? new string[0];
-                ConvertToUpper(exclude);
                 for (int index = 0; index < len; index++)
                 {
                     var propertyWriter = PropertyWriters[index];
+
+                    if (propertyWriter.shouldSerialize != null && !propertyWriter.shouldSerialize((T)value)) continue;
+
                     var propertyValue = value != null
                         ? propertyWriter.GetterFn((T)value)
                         : null;
-
+                    
                     if (propertyWriter.propertySuppressDefaultAttribute && Equals(propertyWriter.DefaultValue, propertyValue))
                     {
                         continue;
@@ -337,7 +358,8 @@ namespace ServiceStack.Text.Common
                         continue;
                     }
 
-                    if (exclude.Any() && exclude.Contains(propertyWriter.propertyCombinedNameUpper)) continue;
+                    if (JsConfig.ExcludePropertyReferences != null
+                        && JsConfig.ExcludePropertyReferences.Contains(propertyWriter.propertyReferenceName)) continue;
 
                     if (i++ > 0)
                         writer.Write(JsWriter.ItemSeperator);
@@ -410,15 +432,6 @@ namespace ServiceStack.Text.Common
             finally
             {
                 JsState.QueryStringMode = false;
-            }
-        }
-
-        private static void ConvertToUpper(string[] strArray)
-        {
-            for (var i = 0; i < strArray.Length; ++i)
-            {
-                if (strArray[i] != null)
-                    strArray[i] = strArray[i].ToUpper();
             }
         }
     }

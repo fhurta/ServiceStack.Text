@@ -10,6 +10,8 @@ namespace ServiceStack.Text
     {
         static Env()
         {
+            LicenseUtils.AssertEvaluationLicense();
+
             string platformName = null;
 
 #if NETFX_CORE
@@ -34,6 +36,8 @@ namespace ServiceStack.Text
                 + (IsMono ? "/Mono" : "/.NET")
                 + (IsMonoTouch ? " MonoTouch" : "")
                 + (IsWinRT ? ".NET WinRT" : "");
+
+            __releaseDate = DateTime.Parse("2001-01-01");
         }
 
         public static decimal ServiceStackVersion = 4.001m;
@@ -52,11 +56,18 @@ namespace ServiceStack.Text
 
         public static string ServerUserAgent { get; set; }
 
+        private static readonly DateTime __releaseDate;
+        public static DateTime GetReleaseDate()
+        {
+            return __releaseDate;
+        }
+
         private static string referenceAssembyPath;
         public static string ReferenceAssembyPath
         {
             get
             {
+#if !SILVERLIGHT
                 if (!IsMono && referenceAssembyPath == null)
                 {
                     var programFilesPath = Environment.GetEnvironmentVariable("ProgramFiles(x86)") ?? @"C:\Program Files (x86)";
@@ -70,6 +81,7 @@ namespace ServiceStack.Text
                             "Could not infer .NET Reference Assemblies path, e.g '{0}'.\n".Fmt(netFxReferenceBasePath + @"v4.0\") +
                             "Provide path manually 'Env.ReferenceAssembyPath'.");
                 }
+#endif
                 return referenceAssembyPath;
             }
             set { referenceAssembyPath = value; }

@@ -1,4 +1,7 @@
-﻿using System;
+﻿#if WINDOWS_PHONE && !WP8
+using ServiceStack.Text.WP;
+#endif
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -81,5 +84,6 @@ namespace ServiceStack.Text
         public int? MaxDepth { get; set; }
         public EmptyCtorFactoryDelegate ModelFactory { get; set; }
         public string[] ExcludePropertyReferences { get; set; }
+        public HashSet<Type> ExcludeTypes { get; set; }
     }
 }

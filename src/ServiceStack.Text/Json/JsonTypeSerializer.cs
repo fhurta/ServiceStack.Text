@@ -5,9 +5,9 @@
 // Authors:
 //   Demis Bellot (demis.bellot@gmail.com)
 //
-// Copyright 2012 ServiceStack Ltd.
+// Copyright 2012 Service Stack LLC. All Rights Reserved.
 //
-// Licensed under the same terms of ServiceStack: new BSD license.
+// Licensed under the same terms of ServiceStack.
 //
 
 using System;
@@ -560,8 +560,6 @@ namespace ServiceStack.Text.Json
 
             var tokenStartPos = i;
             var valueChar = value[i];
-            var withinQuotes = false;
-            var endsToEat = 1;
 
             switch (valueChar)
             {

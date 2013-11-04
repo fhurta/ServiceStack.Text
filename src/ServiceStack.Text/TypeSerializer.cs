@@ -5,9 +5,9 @@
 // Authors:
 //   Demis Bellot (demis.bellot@gmail.com)
 //
-// Copyright 2012 ServiceStack Ltd.
+// Copyright 2012 Service Stack LLC. All Rights Reserved.
 //
-// Licensed under the same terms of ServiceStack: new BSD license.
+// Licensed under the same terms of ServiceStack.
 //
 
 using System;
@@ -191,7 +191,6 @@ namespace ServiceStack.Text
 		/// </summary>
 		/// <returns></returns>
 		public static Dictionary<string, string> ToStringDictionary<T>(this T obj)
-			where T : class
 		{
 			var jsv = SerializeToString(obj);
 			var map = DeserializeFromString<Dictionary<string, string>>(jsv);
@@ -260,7 +259,12 @@ namespace ServiceStack.Text
                 sb.AppendFormat("{0} {1}", param.ParameterType.Name, param.Name);
             }
 
-            var info = "{0} {1}({2})".Fmt(method.ReturnType.Name, fn.Method.Name, sb);
+#if NETFX_CORE
+            var methodName = fn.GetMethodInfo().Name;
+#else
+            var methodName = fn.Method.Name;
+#endif
+            var info = "{0} {1}({2})".Fmt(method.ReturnType.Name, methodName, sb);
             return info;
         }
 

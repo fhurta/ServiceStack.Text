@@ -5,51 +5,114 @@
 // Authors:
 //   Demis Bellot (demis.bellot@gmail.com)
 //
-// Copyright 2012 ServiceStack Ltd.
+// Copyright 2012 Service Stack LLC. All Rights Reserved.
 //
-// Licensed under the same terms of ServiceStack: new BSD license.
+// Licensed under the same terms of ServiceStack.
 //
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Threading;
 using ServiceStack.Text.Support;
+
+using ServiceStack.Text;
+#if !SILVERLIGHT && !MONOTOUCH && !XBOX
+using FastMember = ServiceStack.Text.FastMember;
+using System.Collections.Concurrent;
+#endif
+
 #if WINDOWS_PHONE
 using System.Linq.Expressions;
 #endif
 
-namespace ServiceStack.Text
+namespace ServiceStack
 {
     public delegate EmptyCtorDelegate EmptyCtorFactoryDelegate(Type type);
     public delegate object EmptyCtorDelegate();
 
+#if NETFX_CORE
+
+    public enum TypeCode
+    {
+            Byte,
+            Int16,
+            Int32,
+            Int64,
+            SByte,
+            UInt16,
+            UInt32,
+            UInt64,
+            Single,
+            Double,
+            Char,
+            Boolean,
+            String,
+            DateTime,
+            Decimal,
+            Empty,
+            DBNull, // Never used
+            Object
+    }
+#endif
+
     public static class ReflectionExtensions
     {
-        private static Dictionary<Type, object> DefaultValueTypes = new Dictionary<Type, object>();
-
-        public static object GetDefaultValue(this Type type)
+#if NETFX_CORE
+        private static readonly Dictionary<Type, TypeCode> _typeCodeTable =
+        new Dictionary<Type, TypeCode>()
         {
-            if (!type.IsValueType()) return null;
+                { typeof( Boolean ), TypeCode.Boolean },
+                { typeof( Char ), TypeCode.Char },
+                { typeof( Byte ), TypeCode.Byte },
+                { typeof( Int16 ), TypeCode.Int16 },
+                { typeof( Int32 ), TypeCode.Int32 },
+                { typeof( Int64 ), TypeCode.Int64 },
+                { typeof( SByte ), TypeCode.SByte },
+                { typeof( UInt16 ), TypeCode.UInt16 },
+                { typeof( UInt32 ), TypeCode.UInt32 },
+                { typeof( UInt64 ), TypeCode.UInt64 },
+                { typeof( Single ), TypeCode.Single },
+                { typeof( Double ), TypeCode.Double },
+                { typeof( DateTime ), TypeCode.DateTime },
+                { typeof( Decimal ), TypeCode.Decimal },
+                { typeof( String ), TypeCode.String },
+        };
 
-            object defaultValue;
-            if (DefaultValueTypes.TryGetValue(type, out defaultValue)) return defaultValue;
+        public static Type[] GetGenericArguments(this Type type)
+        {
+            return type.GetTypeInfo().GenericTypeArguments;
+        }
 
-            defaultValue = Activator.CreateInstance(type);
 
-            Dictionary<Type, object> snapshot, newCache;
-            do
+        public static TypeInfo GetTypeInfo(this Type type)
+        {
+            IReflectableType reflectableType = (IReflectableType)type;
+            return reflectableType.GetTypeInfo();
+        }
+#endif
+
+        public static TypeCode GetTypeCode(Type type)
+        {
+#if NETFX_CORE
+            if (type == null)
             {
-                snapshot = DefaultValueTypes;
-                newCache = new Dictionary<Type, object>(DefaultValueTypes);
-                newCache[type] = defaultValue;
+                return TypeCode.Empty;
+            }
 
-            } while (!ReferenceEquals(
-                Interlocked.CompareExchange(ref DefaultValueTypes, newCache, snapshot), snapshot));
+            TypeCode result;
+            if (!_typeCodeTable.TryGetValue(type, out result))
+            {
+                result = TypeCode.Object;
+            }
 
-            return defaultValue;
+            return result;
+#else
+            return Type.GetTypeCode(type);
+#endif
         }
 
         public static bool IsInstanceOf(this Type type, Type thisOrBaseType)
@@ -162,16 +225,29 @@ namespace ServiceStack.Text
             return true;
         }
 
+        public static TypeCode GetUnderlyingTypeCode(this Type type)
+        {
+#if NETFX_CORE
+            return GetTypeCode(Nullable.GetUnderlyingType(type) ?? type);
+#else
+            return Type.GetTypeCode(Nullable.GetUnderlyingType(type) ?? type);
+#endif
+        }
+
         public static bool IsNumericType(this Type type)
         {
             if (type == null) return false;
 
+#if NETFX_CORE
+            if (type.IsEnum()) //TypeCode can be TypeCode.Int32
+#else
             if (type.IsEnum) //TypeCode can be TypeCode.Int32
+#endif
             {
                 return JsConfig.TreatEnumAsInteger || type.IsEnumFlags();
             }
 
-            switch (Type.GetTypeCode(type))
+            switch (GetTypeCode(type))
             {
                 case TypeCode.Byte:
                 case TypeCode.Decimal:
@@ -187,11 +263,11 @@ namespace ServiceStack.Text
                     return true;
 
                 case TypeCode.Object:
-                    if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+                    if (type.IsGenericType() && type.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
                         return IsNumericType(Nullable.GetUnderlyingType(type));
                     }
-                    if (type.IsEnum)
+                    if (type.IsEnum())
                     {
                         return JsConfig.TreatEnumAsInteger || type.IsEnumFlags();
                     }
@@ -199,12 +275,12 @@ namespace ServiceStack.Text
             }
             return false;
         }
-        
+
         public static bool IsIntegerType(this Type type)
         {
             if (type == null) return false;
 
-            switch (Type.GetTypeCode(type))
+            switch (GetTypeCode(type))
             {
                 case TypeCode.Byte:
                 case TypeCode.Int16:
@@ -217,7 +293,7 @@ namespace ServiceStack.Text
                     return true;
 
                 case TypeCode.Object:
-                    if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+                    if (type.IsGenericType() && type.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
                         return IsNumericType(Nullable.GetUnderlyingType(type));
                     }
@@ -230,7 +306,7 @@ namespace ServiceStack.Text
         {
             if (type == null) return false;
 
-            switch (Type.GetTypeCode(type))
+            switch (GetTypeCode(type))
             {
                 case TypeCode.Decimal:
                 case TypeCode.Double:
@@ -238,7 +314,7 @@ namespace ServiceStack.Text
                     return true;
 
                 case TypeCode.Object:
-                    if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+                    if (type.IsGenericType() && type.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
                         return IsNumericType(Nullable.GetUnderlyingType(type));
                     }
@@ -251,7 +327,7 @@ namespace ServiceStack.Text
         {
             foreach (var t in type.GetTypeInterfaces())
             {
-                if (t.IsGeneric() && t.GetGenericTypeDefinition() == genericInterfaceType) 
+                if (t.IsGeneric() && t.GetGenericTypeDefinition() == genericInterfaceType)
                     return t;
             }
 
@@ -383,7 +459,11 @@ namespace ServiceStack.Text
 
         public static EmptyCtorDelegate GetConstructorMethodToCache(Type type)
         {
+#if NETFX_CORE
+            if (type.IsInterface())
+#else
             if (type.IsInterface)
+#endif
             {
                 if (type.HasGenericType())
                 {
@@ -412,6 +492,16 @@ namespace ServiceStack.Text
             else if (type.IsArray)
             {
                 return () => Array.CreateInstance(type.GetElementType(), 0);
+            }
+            else if (type.IsGenericTypeDefinition())
+            {
+                var genericArgs = type.GetGenericArguments();
+                var typeArgs = new Type[genericArgs.Length];
+                for (var i = 0; i < genericArgs.Length; i++)
+                    typeArgs[i] = typeof(object);
+
+                var realizedType = type.MakeGenericType(typeArgs);
+                return realizedType.CreateInstance;
             }
 
             var emptyCtor = type.GetEmptyConstructor();
@@ -464,10 +554,41 @@ namespace ServiceStack.Text
             return TypeMeta<T>.EmptyCtorFn();
         }
 
+        /// <summary>
+        /// Creates a new instance of type. 
+        /// First looks at JsConfig.ModelFactory before falling back to CreateInstance
+        /// </summary>
+        public static T New<T>(this Type type)
+        {
+            var factoryFn = JsConfig.ModelFactory(type)
+                ?? GetConstructorMethod(type);
+            return (T)factoryFn();
+        }
+
+        /// <summary>
+        /// Creates a new instance of type. 
+        /// First looks at JsConfig.ModelFactory before falling back to CreateInstance
+        /// </summary>
+        public static object New(this Type type)
+        {
+            var factoryFn = JsConfig.ModelFactory(type)
+                ?? GetConstructorMethod(type);
+            return factoryFn();
+        }
+
+        /// <summary>
+        /// Creates a new instance from the default constructor of type
+        /// </summary>
         public static object CreateInstance(this Type type)
         {
             var ctorFn = GetConstructorMethod(type);
             return ctorFn();
+        }
+
+        public static T CreateInstance<T>(this Type type)
+        {
+            var ctorFn = GetConstructorMethod(type);
+            return (T)ctorFn();
         }
 
         public static object CreateInstance(string typeName)
@@ -526,35 +647,37 @@ namespace ServiceStack.Text
             if (type.IsDto())
             {
                 return !Env.IsMono
-                    ? publicReadableProperties.Where(attr => 
+                    ? publicReadableProperties.Where(attr =>
                         attr.IsDefined(typeof(DataMemberAttribute), false)).ToArray()
-                    : publicReadableProperties.Where(attr => 
-                        attr.CustomAttributes(false).Any(x => x.GetType().Name == DataMember)).ToArray();
+                    : publicReadableProperties.Where(attr =>
+                        attr.AllAttributes().Any(x => x.GetType().Name == DataMember)).ToArray();
             }
 
             // else return those properties that are not decorated with IgnoreDataMember
-            return publicReadableProperties.Where(prop => !prop.CustomAttributes(false).Any(attr => attr.GetType().Name == IgnoreDataMember)).ToArray();
+            return publicReadableProperties
+                .Where(prop => prop.AllAttributes().All(attr => attr.GetType().Name != IgnoreDataMember))
+                .Where(prop => !JsConfig.ExcludeTypes.Contains(prop.PropertyType))
+                .ToArray();
         }
 
         public static FieldInfo[] GetSerializableFields(this Type type)
         {
-            if (type.IsDto()) {
+            if (type.IsDto())
+            {
                 return new FieldInfo[0];
             }
-            
+
             var publicFields = type.GetPublicFields();
 
             // else return those properties that are not decorated with IgnoreDataMember
-            return publicFields.Where(prop => !prop.CustomAttributes(false).Any(attr => attr.GetType().Name == IgnoreDataMember)).ToArray();
+            return publicFields
+                .Where(prop => prop.AllAttributes().All(attr => attr.GetType().Name != IgnoreDataMember))
+                .Where(prop => !JsConfig.ExcludeTypes.Contains(prop.FieldType))
+                .ToArray();
         }
 
-        public static bool HasAttr<T>(this Type type) where T : Attribute
-        {
-            return type.HasAttribute<T>();
-        }
-
-#if !SILVERLIGHT && !MONOTOUCH 
-        static readonly Dictionary<Type, FastMember.TypeAccessor> typeAccessorMap 
+#if !SILVERLIGHT && !MONOTOUCH
+        static readonly Dictionary<Type, FastMember.TypeAccessor> typeAccessorMap
             = new Dictionary<Type, FastMember.TypeAccessor>();
 #endif
 
@@ -571,7 +694,7 @@ namespace ServiceStack.Text
 
         public static DataMemberAttribute GetDataMember(this PropertyInfo pi)
         {
-            var dataMember = pi.CustomAttributes(typeof(DataMemberAttribute), false)
+            var dataMember = pi.AllAttributes(typeof(DataMemberAttribute))
                 .FirstOrDefault() as DataMemberAttribute;
 
 #if !SILVERLIGHT && !MONOTOUCH && !XBOX
@@ -583,7 +706,7 @@ namespace ServiceStack.Text
 
         public static DataMemberAttribute GetDataMember(this FieldInfo pi)
         {
-            var dataMember = pi.CustomAttributes(typeof(DataMemberAttribute), false)
+            var dataMember = pi.AllAttributes(typeof(DataMemberAttribute))
                 .FirstOrDefault() as DataMemberAttribute;
 
 #if !SILVERLIGHT && !MONOTOUCH && !XBOX
@@ -596,7 +719,7 @@ namespace ServiceStack.Text
 #if !SILVERLIGHT && !MONOTOUCH && !XBOX
         public static DataContractAttribute GetWeakDataContract(this Type type)
         {
-            var attr = type.CustomAttributes().FirstOrDefault(x => x.GetType().Name == DataContract);
+            var attr = type.AllAttributes().FirstOrDefault(x => x.GetType().Name == DataContract);
             if (attr != null)
             {
                 var attrType = attr.GetType();
@@ -608,7 +731,8 @@ namespace ServiceStack.Text
                         typeAccessorMap[attrType] = accessor = FastMember.TypeAccessor.Create(attr.GetType());
                 }
 
-                return new DataContractAttribute {
+                return new DataContractAttribute
+                {
                     Name = (string)accessor[attr, "Name"],
                     Namespace = (string)accessor[attr, "Namespace"],
                 };
@@ -618,7 +742,7 @@ namespace ServiceStack.Text
 
         public static DataMemberAttribute GetWeakDataMember(this PropertyInfo pi)
         {
-            var attr = pi.CustomAttributes().FirstOrDefault(x => x.GetType().Name == DataMember);
+            var attr = pi.AllAttributes().FirstOrDefault(x => x.GetType().Name == DataMember);
             if (attr != null)
             {
                 var attrType = attr.GetType();
@@ -630,8 +754,9 @@ namespace ServiceStack.Text
                         typeAccessorMap[attrType] = accessor = FastMember.TypeAccessor.Create(attr.GetType());
                 }
 
-                var newAttr = new DataMemberAttribute {
-                    Name = (string) accessor[attr, "Name"],
+                var newAttr = new DataMemberAttribute
+                {
+                    Name = (string)accessor[attr, "Name"],
                     EmitDefaultValue = (bool)accessor[attr, "EmitDefaultValue"],
                     IsRequired = (bool)accessor[attr, "IsRequired"],
                 };
@@ -647,7 +772,7 @@ namespace ServiceStack.Text
 
         public static DataMemberAttribute GetWeakDataMember(this FieldInfo pi)
         {
-            var attr = pi.CustomAttributes().FirstOrDefault(x => x.GetType().Name == DataMember);
+            var attr = pi.AllAttributes().FirstOrDefault(x => x.GetType().Name == DataMember);
             if (attr != null)
             {
                 var attrType = attr.GetType();
@@ -840,18 +965,33 @@ namespace ServiceStack.Text
 #endif
         }
 
-        public static bool HasAttribute<T>(this Type type, bool inherit = true) where T : Attribute
+        public static bool HasAttribute<T>(this Type type)
         {
-            return type.CustomAttributes(inherit).Any(x => x.GetType() == typeof(T));
+            return type.AllAttributes().Any(x => x.GetType() == typeof(T));
         }
 
-        public static IEnumerable<T> AttributesOfType<T>(this Type type, bool inherit = true) where T : Attribute
+        public static bool HasAttributeNamed(this Type type, string name)
         {
-#if NETFX_CORE
-            return type.GetTypeInfo().GetCustomAttributes<T>(inherit);
-#else
-            return type.GetCustomAttributes(inherit).OfType<T>();
-#endif
+            var normalizedAttr = name.Replace("Attribute", "").ToLower();
+            return type.AllAttributes().Any(x => x.GetType().Name.Replace("Attribute", "").ToLower() == normalizedAttr);
+        }
+
+        public static bool HasAttributeNamed(this PropertyInfo pi, string name)
+        {
+            var normalizedAttr = name.Replace("Attribute", "").ToLower();
+            return pi.AllAttributes().Any(x => x.GetType().Name.Replace("Attribute", "").ToLower() == normalizedAttr);
+        }
+
+        public static bool HasAttributeNamed(this FieldInfo fi, string name)
+        {
+            var normalizedAttr = name.Replace("Attribute", "").ToLower();
+            return fi.AllAttributes().Any(x => x.GetType().Name.Replace("Attribute", "").ToLower() == normalizedAttr);
+        }
+
+        public static bool HasAttributeNamed(this MemberInfo mi, string name)
+        {
+            var normalizedAttr = name.Replace("Attribute", "").ToLower();
+            return mi.AllAttributes().Any(x => x.GetType().Name.Replace("Attribute", "").ToLower() == normalizedAttr);
         }
 
         const string DataContract = "DataContractAttribute";
@@ -896,87 +1036,255 @@ namespace ServiceStack.Text
 #endif
         }
 
-        public static object[] CustomAttributes(this PropertyInfo propertyInfo, bool inherit = true)
+        static readonly Dictionary<string, List<Attribute>> propertyAttributesMap
+            = new Dictionary<string, List<Attribute>>();
+
+        internal static string UniqueKey(this PropertyInfo pi)
         {
-#if NETFX_CORE
-            return propertyInfo.GetCustomAttributes(inherit).ToArray();
+            if (pi.DeclaringType == null)
+                throw new ArgumentException("Property '{0}' has no DeclaringType".Fmt(pi.Name));
+
+            return pi.DeclaringType.Namespace + "." + pi.DeclaringType.Name + "." + pi.Name;
+        }
+
+        public static Type AddAttributes(this Type type, params Attribute[] attrs)
+        {
+#if NETFX_CORE || SILVERLIGHT
+            throw new NotSupportedException("Adding Attributes at runtime is not supported on this platform");
 #else
-            return propertyInfo.GetCustomAttributes(inherit);
+            TypeDescriptor.AddAttributes(type, attrs);
+            return type;
 #endif
         }
 
-        public static object[] CustomAttributes(this PropertyInfo propertyInfo, Type attrType, bool inherit = true)
+        /// <summary>
+        /// Add a Property attribute at runtime. 
+        /// <para>Not threadsafe, should only add attributes on Startup.</para>
+        /// </summary>
+        public static PropertyInfo AddAttributes(this PropertyInfo propertyInfo, params Attribute[] attrs)
+        {
+            List<Attribute> propertyAttrs;
+            var key = propertyInfo.UniqueKey();
+            if (!propertyAttributesMap.TryGetValue(key, out propertyAttrs))
+            {
+                propertyAttributesMap[key] = propertyAttrs = new List<Attribute>();
+            }
+
+            propertyAttrs.AddRange(attrs);
+
+            return propertyInfo;
+        }
+
+        /// <summary>
+        /// Add a Property attribute at runtime. 
+        /// <para>Not threadsafe, should only add attributes on Startup.</para>
+        /// </summary>
+        public static PropertyInfo ReplaceAttribute(this PropertyInfo propertyInfo, Attribute attr)
+        {
+            var key = propertyInfo.UniqueKey();
+
+            List<Attribute> propertyAttrs;
+            if (!propertyAttributesMap.TryGetValue(key, out propertyAttrs))
+            {
+                propertyAttributesMap[key] = propertyAttrs = new List<Attribute>();
+            }
+
+            propertyAttrs.RemoveAll(x => x.GetType() == attr.GetType());
+
+            propertyAttrs.Add(attr);
+
+            return propertyInfo;
+        }
+
+        public static List<TAttr> GetAttributes<TAttr>(this PropertyInfo propertyInfo)
+        {
+            List<Attribute> propertyAttrs;
+            return !propertyAttributesMap.TryGetValue(propertyInfo.UniqueKey(), out propertyAttrs)
+                ? new List<TAttr>()
+                : propertyAttrs.OfType<TAttr>().ToList();
+        }
+
+        public static List<Attribute> GetAttributes(this PropertyInfo propertyInfo)
+        {
+            List<Attribute> propertyAttrs;
+            return !propertyAttributesMap.TryGetValue(propertyInfo.UniqueKey(), out propertyAttrs)
+                ? new List<Attribute>()
+                : propertyAttrs.ToList();
+        }
+
+        public static List<Attribute> GetAttributes(this PropertyInfo propertyInfo, Type attrType)
+        {
+            List<Attribute> propertyAttrs;
+            return !propertyAttributesMap.TryGetValue(propertyInfo.UniqueKey(), out propertyAttrs)
+                ? new List<Attribute>()
+                : propertyAttrs.Where(x => x.GetType() == attrType).ToList();
+        }
+
+        public static object[] AllAttributes(this PropertyInfo propertyInfo)
         {
 #if NETFX_CORE
-            return propertyInfo.GetCustomAttributes(inherit).Where(x => x.GetType() == attrType).ToArray();
+            return propertyInfo.GetCustomAttributes(true).ToArray();
 #else
-            return propertyInfo.GetCustomAttributes(attrType, inherit);
+            var attrs = propertyInfo.GetCustomAttributes(true);
+            var runtimeAttrs = propertyInfo.GetAttributes();
+            if (runtimeAttrs.Count == 0)
+                return attrs;
+
+            runtimeAttrs.AddRange(attrs.Cast<Attribute>());
+            return runtimeAttrs.Cast<object>().ToArray();
 #endif
         }
 
-        public static object[] CustomAttributes(this FieldInfo fieldInfo, bool inherit = true)
+        public static object[] AllAttributes(this PropertyInfo propertyInfo, Type attrType)
         {
 #if NETFX_CORE
-            return fieldInfo.GetCustomAttributes(inherit).ToArray();
+            return propertyInfo.GetCustomAttributes(true).Where(x => x.GetType() == attrType).ToArray();
 #else
-            return fieldInfo.GetCustomAttributes(inherit);
+            var attrs = propertyInfo.GetCustomAttributes(attrType, true);
+            var runtimeAttrs = propertyInfo.GetAttributes(attrType);
+            if (runtimeAttrs.Count == 0)
+                return attrs;
+
+            runtimeAttrs.AddRange(attrs.Cast<Attribute>());
+            return runtimeAttrs.Cast<object>().ToArray();
 #endif
         }
 
-        public static object[] CustomAttributes(this FieldInfo fieldInfo, Type attrType, bool inherit = true)
+        public static object[] AllAttributes(this ParameterInfo paramInfo)
         {
 #if NETFX_CORE
-            return fieldInfo.GetCustomAttributes(inherit).Where(x => x.GetType() == attrType).ToArray();
+            return paramInfo.GetCustomAttributes(true).ToArray();
 #else
-            return fieldInfo.GetCustomAttributes(attrType, inherit);
+            return paramInfo.GetCustomAttributes(true);
 #endif
         }
 
-        public static object[] CustomAttributes(this Type type, bool inherit = true)
+        public static object[] AllAttributes(this FieldInfo fieldInfo)
         {
 #if NETFX_CORE
-            return type.GetTypeInfo().GetCustomAttributes(inherit).ToArray();
+            return fieldInfo.GetCustomAttributes(true).ToArray();
 #else
-            return type.GetCustomAttributes(inherit);
+            return fieldInfo.GetCustomAttributes(true);
 #endif
         }
 
-        public static object[] CustomAttributes(this Type type, Type attrType, bool inherit = true)
+        public static object[] AllAttributes(this MemberInfo memberInfo)
         {
 #if NETFX_CORE
-            return type.GetTypeInfo().GetCustomAttributes(inherit).Where(x => x.GetType() == attrType).ToArray();
+            return memberInfo.GetCustomAttributes(true).ToArray();
 #else
-            return type.GetCustomAttributes(attrType, inherit);
+            return memberInfo.GetCustomAttributes(true);
 #endif
         }
 
-        public static TAttr FirstAttribute<TAttr>(this Type type, bool inherit = true) where TAttr : Attribute
+        public static object[] AllAttributes(this ParameterInfo paramInfo, Type attrType)
         {
 #if NETFX_CORE
-            return type.GetTypeInfo().GetCustomAttributes(typeof(TAttr), inherit)
-                .FirstOrDefault() as TAttr;
+            return paramInfo.GetCustomAttributes(true).Where(x => x.GetType() == attrType).ToArray();
 #else
-            return type.GetCustomAttributes(typeof(TAttr), inherit)
-                   .FirstOrDefault() as TAttr;
+            return paramInfo.GetCustomAttributes(attrType, true);
 #endif
+        }
+
+        public static object[] AllAttributes(this MemberInfo memberInfo, Type attrType)
+        {
+#if NETFX_CORE
+            return memberInfo.GetCustomAttributes(true).Where(x => x.GetType() == attrType).ToArray();
+#else
+            return memberInfo.GetCustomAttributes(attrType, true);
+#endif
+        }
+
+        public static object[] AllAttributes(this FieldInfo fieldInfo, Type attrType)
+        {
+#if NETFX_CORE
+            return fieldInfo.GetCustomAttributes(true).Where(x => x.GetType() == attrType).ToArray();
+#else
+            return fieldInfo.GetCustomAttributes(attrType, true);
+#endif
+        }
+
+        public static object[] AllAttributes(this Type type)
+        {
+#if NETFX_CORE
+            return type.GetTypeInfo().GetCustomAttributes(true).ToArray();
+#elif SILVERLIGHT
+            return type.GetCustomAttributes(true);
+#else
+            return TypeDescriptor.GetAttributes(type).Cast<object>().ToArray();
+#endif
+        }
+
+        public static object[] AllAttributes(this Type type, Type attrType)
+        {
+#if NETFX_CORE
+            return type.GetTypeInfo().GetCustomAttributes(true).Where(x => x.GetType() == attrType).ToArray();
+#elif SILVERLIGHT
+            return type.GetCustomAttributes(attrType, true);
+#else
+            return TypeDescriptor.GetAttributes(type).OfType<Attribute>().ToArray();
+#endif
+        }
+
+        public static TAttr[] AllAttributes<TAttr>(this ParameterInfo pi)
+        {
+            return pi.AllAttributes(typeof(TAttr)).Cast<TAttr>().ToArray();
+        }
+
+        public static TAttr[] AllAttributes<TAttr>(this MemberInfo mi)
+        {
+            return mi.AllAttributes(typeof(TAttr)).Cast<TAttr>().ToArray();
+        }
+
+        public static TAttr[] AllAttributes<TAttr>(this FieldInfo fi)
+        {
+            return fi.AllAttributes(typeof(TAttr)).Cast<TAttr>().ToArray();
+        }
+
+        public static TAttr[] AllAttributes<TAttr>(this PropertyInfo pi)
+        {
+            return pi.AllAttributes(typeof(TAttr)).Cast<TAttr>().ToArray();
+        }
+
+        public static TAttr[] AllAttributes<TAttr>(this Type type) where TAttr : Attribute
+        {
+#if NETFX_CORE
+            return type.GetTypeInfo().GetCustomAttributes<TAttr>(true).Cast<TAttr>().ToArray();
+#elif SILVERLIGHT
+            return type.GetCustomAttributes(typeof(TAttr), true).Cast<TAttr>().ToArray();
+#else
+            return TypeDescriptor.GetAttributes(type).OfType<TAttr>().ToArray();
+#endif
+        }
+
+        public static TAttr FirstAttribute<TAttr>(this Type type) where TAttr : class
+        {
+#if NETFX_CORE
+
+            return (TAttr)type.GetTypeInfo().GetCustomAttributes(typeof(TAttr), true)
+                    .Cast<TAttr>()
+                    .FirstOrDefault();
+#elif SILVERLIGHT
+            return (TAttr)type.GetCustomAttributes(typeof(TAttr), true)
+                   .FirstOrDefault();
+#else
+            return TypeDescriptor.GetAttributes(type).OfType<TAttr>().FirstOrDefault();
+#endif
+        }
+
+        public static TAttribute FirstAttribute<TAttribute>(this MemberInfo memberInfo)
+        {
+            return memberInfo.AllAttributes<TAttribute>().FirstOrDefault();
         }
         
-        public static TAttribute FirstAttribute<TAttribute>(this PropertyInfo propertyInfo)
-            where TAttribute : Attribute
+        public static TAttribute FirstAttribute<TAttribute>(this ParameterInfo paramInfo)
         {
-            return propertyInfo.FirstAttribute<TAttribute>(true);
+            return paramInfo.AllAttributes<TAttribute>().FirstOrDefault();
         }
 
-        public static TAttribute FirstAttribute<TAttribute>(this PropertyInfo propertyInfo, bool inherit)
-            where TAttribute : Attribute
+        public static TAttribute FirstAttribute<TAttribute>(this PropertyInfo propertyInfo)
         {
-#if NETFX_CORE
-            var attrs = propertyInfo.GetCustomAttributes<TAttribute>(inherit);
-            return (TAttribute)(attrs.Count() > 0 ? attrs.ElementAt(0) : null);
-#else
-            var attrs = propertyInfo.GetCustomAttributes(typeof(TAttribute), inherit);
-            return (TAttribute)(attrs.Length > 0 ? attrs[0] : null);
-#endif
+            return propertyInfo.AllAttributes<TAttribute>().FirstOrDefault();
         }
 
         public static Type FirstGenericTypeDefinition(this Type type)
@@ -1014,7 +1322,15 @@ namespace ServiceStack.Text
         public static MethodInfo GetPublicStaticMethod(this Type type, string methodName, Type[] types = null)
         {
 #if NETFX_CORE
-            return type.GetRuntimeMethod(methodName, types);
+            foreach (MethodInfo method in type.GetTypeInfo().DeclaredMethods)
+            {
+                if (method.IsStatic && method.Name == methodName)
+                {
+                    return method;
+                }
+            }
+
+            return null;
 #else
             return types == null
                 ? type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static)
@@ -1051,7 +1367,7 @@ namespace ServiceStack.Text
 #endif
         }
 
-        public static Delegate MakeDelegate(this MethodInfo mi, Type delegateType, bool throwOnBindFailure=true)
+        public static Delegate MakeDelegate(this MethodInfo mi, Type delegateType, bool throwOnBindFailure = true)
         {
 #if NETFX_CORE
             return mi.CreateDelegate(delegateType);
@@ -1086,7 +1402,7 @@ namespace ServiceStack.Text
             return type.IsAssignableFrom(fromType);
 #endif
         }
-        
+
         public static bool IsStandardClass(this Type type)
         {
 #if NETFX_CORE
@@ -1159,7 +1475,7 @@ namespace ServiceStack.Text
             return type.IsInstanceOfType(instance);
 #endif
         }
-        
+
         public static bool IsClass(this Type type)
         {
 #if NETFX_CORE
@@ -1181,9 +1497,9 @@ namespace ServiceStack.Text
         public static bool IsEnumFlags(this Type type)
         {
 #if NETFX_CORE
-            return type.GetTypeInfo().IsEnum && type.FirstAttribute<FlagsAttribute>(false) != null;
+            return type.GetTypeInfo().IsEnum && type.FirstAttribute<FlagsAttribute>() != null;
 #else
-            return type.IsEnum && type.FirstAttribute<FlagsAttribute>(false) != null;
+            return type.IsEnum && type.FirstAttribute<FlagsAttribute>() != null;
 #endif
         }
 
@@ -1214,6 +1530,41 @@ namespace ServiceStack.Text
 #endif
         }
 
+        public static bool IsGenericTypeDefinition(this Type type)
+        {
+#if NETFX_CORE
+            return type.GetTypeInfo().IsGenericTypeDefinition;
+#else
+            return type.IsGenericTypeDefinition;
+#endif
+        }
+
+        public static bool IsGenericType(this Type type)
+        {
+#if NETFX_CORE
+            return type.GetTypeInfo().IsGenericType;
+#else
+            return type.IsGenericType;
+#endif
+        }
+
+#if NETFX_CORE
+        public static object GetDefaultValue(this Type type)
+        {
+            return type.GetTypeInfo().IsValueType ? Activator.CreateInstance(type) : null;
+        }
+
+        public static PropertyInfo GetProperty(this Type type, String propertyName)
+        {
+            return type.GetTypeInfo().GetDeclaredProperty(propertyName);
+        }
+
+        public static MethodInfo GetMethod(this Type type, String methodName)
+        {
+            return type.GetTypeInfo().GetDeclaredMethod(methodName);
+        }
+#endif
+
 #if SILVERLIGHT || NETFX_CORE
         public static List<U> ConvertAll<T, U>(this List<T> list, Func<T, U> converter)
         {
@@ -1225,8 +1576,8 @@ namespace ServiceStack.Text
             return result;
         }
 #endif
- 
-    
+
+
     }
 
 }

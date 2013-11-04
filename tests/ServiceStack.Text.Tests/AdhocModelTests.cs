@@ -2,12 +2,9 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Globalization;
 using System.Runtime.Serialization;
-using System.Threading;
 using System.Xml;
 using NUnit.Framework;
-using ServiceStack.Common.Extensions;
 using ServiceStack.Text.Jsv;
 
 namespace ServiceStack.Text.Tests
@@ -680,6 +677,16 @@ namespace ServiceStack.Text.Tests
         {
             var arrayOfA = new[] { new A { Value = "a" }, null, new A { Value = "b" } };
             Console.WriteLine(arrayOfA.Dump());
+        }
+
+        [Test]
+        public void Can_deserialize_case_insensitive_names()
+        {
+            var dto = "{\"vALUE\":\"B\"}".FromJson<A>();
+            Assert.That(dto.Value, Is.EqualTo("B"));
+            
+            dto = "{vALUE:B}".FromJsv<A>();
+            Assert.That(dto.Value, Is.EqualTo("B"));
         }
 
         [Test]
